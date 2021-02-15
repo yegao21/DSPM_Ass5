@@ -1,0 +1,332 @@
+---
+title: "Ye_Gao_AssignmentV"
+author: "Ye Gao (work with Dantong Qu 5400692)"
+date: "2/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+# clear workplace
+rm(list = ls())
+# set working directory.
+setwd("~/Desktop/WS20:21/DSPM/Assignment5")
+
+#Load the packages needed
+library(jsonlite)
+library(httr)
+library(rlist)
+library(tidyverse)
+library(naniar)
+library(devtools)
+library(dplyr)
+
+```
+## GitHub hyperlink 
+```{r}
+##The hyperlink to the project repository:https://github.com/yegao21/DSPM_Ass5.git 
+
+```
+
+
+
+## 1. Connect with the API.
+```{r}
+#1.1 Access the key
+source("API_Ass5_key.R")
+
+#1.2 Use the API in order to import all event venues in Germany.
+venue_API <- GET("https://app.ticketmaster.com/discovery/v2/venues?", 
+    query = list(apikey = Ass5_key,
+                 countryCode = "DE",
+                 locale="*"
+                  ))
+
+#1.3 Extract the content from the response object
+venues_content<-fromJSON(content(venue_API,as="text",encoding = "UTF-8"))
+
+# In the content from the response, we can see there are 3 lists. The "_embedded" list contains original data about all event venues in Germany included in the API. The second list "links" stores the hyperlink while the last list "page" describe the numbers and pages of the venue data.
+```
+
+
+
+## 2. Extract venue data from API content containing several specific variables--Incomplete
+```{r}
+
+#2.1 Extract venue data with all variables
+venues<-venues_content[["_embedded"]][["venues"]]
+
+
+#2.2 Initiate a dataframe of venues:
+
+#2.3 Get the number of results stored in the first page 
+n<- as.numeric(venues_content[["page"]][["size"]])
+venue_data<- data.frame(
+                  name     = character(n),
+                  city     = character(n),
+                postalCode = character(n),
+                 address   = character(n),
+                       url = character(n),
+                 longitude = character(n),
+                   latitude= character(n)
+                )
+#2.4 fill our dataframe column by column for the 1st page
+venue_data[,1]<-venues$name
+venue_data[,2]<-venues$city$name
+venue_data[,3]<-venues$postalCode
+venue_data[,4]<-venues$address$line1
+venue_data[,5]<-venues$url
+venue_data[,6]<-venues$location$longitude
+venue_data[,7]<-venues$location$latitude
+
+# 2.5 print the transposed version of the incomplete venue data
+glimpse(venue_data)
+
+#This dataframe only contains the 20 results in first page. There are still much more results in the rest of pages.
+```
+
+
+## 3. Extract complete venue data from API content consisting of same  variables.
+```{r}
+
+#3.1 Get the total number of results 
+m <- as.numeric(venues_content[["page"]][["totalElements"]])
+
+
+##3.2 Get right times for our loops in the following in order to extract results form all pages: (Here we set 200 results to store for each loop)
+round <- floor(m/200)
+
+
+##3.3 Get the total pages of results
+pages<-as.numeric(venues_content[["page"]][["totalPages"]])
+
+#3.4  Get number of entries on the last incomplete page:
+residual <- m-200*round
+
+
+```
+
+```{r,warning=FALSE}
+#3.5 .Initiate the dataframe again but in the correct dimensions
+venue_df<- data.frame(
+                  name     = character(m),
+                  city     = character(m),
+                postalCode = character(m),
+                 address   = character(m),
+                       url = character(m),
+                 longitude = character(m),
+                   latitude= character(m)
+                )
+#3.6 Loop over the complete pages with 200 entries each:
+for (i in 1:round) {
+  venue1_API <- GET("https://app.ticketmaster.com/discovery/v2/venues", 
+                          query = list(apikey = Ass5_key,
+                    countryCode = "DE",
+                    locale="*",
+                    size=200,
+                    page=i-1 #The starting page number is 0
+                          ))
+  
+venue1_content<-fromJSON(content(venue1_API,as="text",encoding = "UTF-8"))
+venues1<-venue1_content[["_embedded"]][["venues"]]
+
+#Gradually fill the new dataframe page by page (lines 1-200 in the first iteration, lines 201-400 in the second iteration, etc):
+
+#Replace the empty value by "NA", so that the loop would not stop due to wrong dimension:
+venues1$name[is.null(venues1$name)]<-NA
+venue_df[(200 * i - 199):(200 * i),1]<-venues1$name
+
+venues1$city$name[is.null(venues1$city$name)]<-NA
+venue_df[(200 * i - 199):(200 * i),2]<-venues1$city$name
+
+venues1$postalCode[is.null(venues1$postalCode)]<-NA
+venue_df[(200 * i - 199):(200 * i),3]<-venues1$postalCode
+
+venues1$address$line1[is.null(venues1$address$line1)]<-NA
+venue_df[(200 * i - 199):(200 * i),4]<-venues1$address$line1
+
+venues1$url[is.null(venues1$url)]<-NA
+venue_df[(200 * i - 199):(200 * i),5]<-venues1$url
+
+venues1$location$longitude[is.null(venues1$location$longitude)]<-NA
+venue_df[(200 * i - 199):(200 * i),6]<-venues1$location$longitude
+
+venues1$location$latitude[is.null(venues1$location$latitude)]<-NA
+venue_df[(200 * i -199):(200 * i),7]<-venues1$location$latitude
+
+}
+
+```
+
+```{r,include= FALSE}
+# 3.7 Add the last incomplete page manually outside the loop:
+i <- round+1
+venue2_API <- GET("https://app.ticketmaster.com/discovery/v2/venues", 
+                          query = list(apikey = Ass5_key,
+                    countryCode = "DE",
+                    locale="*",
+                    size=200,
+                    page=i-1
+                          ))
+venue2_content<-fromJSON(content(venue2_API,as="text",encoding = "UTF-8"))
+venues2<-venue2_content[["_embedded"]][["venues"]]
+
+venues2$name[is.null(venues2$name)]<-NA
+venue_df[(200 * i - 199):m,1]<-venues2$name
+
+venues2$city$name[is.null(venues2$city$name)]<-NA
+venue_df[(200 * i - 199):m,2]<-venues2$city$name
+
+venues2$postalCode[is.null(venues2$postalCode)]<-NA 
+venue_df[(200 * i - 199):m,3]<-venues2$postalCode
+
+venues2$address$line1[is.null(venues2$address$line1)]<-NA 
+venue_df[(200 * i - 199):m,4]<-venues2$address$line1
+
+venues2$url[is.null(venues2$url)]<-NA
+venue_df[(200 * i - 199):m,5]<-venues2$url
+
+
+venues2$location$longitude[is.null(venues2$location$longitude)]<-NA
+venue_df[(200 * i - 199):m,6]<-venues2$location$longitude
+
+
+ifelse(is.null(venues2$location$latitude),
+       venue_df[(200 * i - 199):m,7]<-NA,
+       venue_df[(200 * i - 199):m,7]<-venues2$location$latitude)
+```
+
+
+```{r,warning=FALSE}
+#3.8 Have a look at the transposed version of a small amount of the all venue data
+glimpse(venue_df)
+
+```
+
+## 4. Visualizing the extracted data
+```{r,message=FALSE}
+#4.1 Store the extracted data in another dataframe
+venue_map<-venue_df
+
+#4.2 convert the longitude and latitude into numeric values
+venue_map$longitude<-as.numeric(venue_map$longitude)
+venue_map$latitude<-as.numeric(venue_map$latitude)
+
+#4.3 Remove coordinates of some extreme points of those venues
+venue_map$longitude<-ifelse((venue_map$longitude)<5.866944|(venue_map$longitude)>15.043611,
+       NA,
+       venue_map$longitude
+          )
+
+venue_map$latitude<-ifelse((venue_map$latitude)<47.271679|(venue_map$latitude)>55.0846,
+      NA,
+      venue_map$latitude
+       )
+
+
+```
+
+
+```{r,warning=FALSE}
+#4.4 Plot the map with extracted data
+ggplot() + 
+geom_polygon(
+              aes(x = long, y = lat, group = group), 
+              data = map_data("world", region = "Germany"),
+              fill = "grey90",color = "black")+
+  geom_point(data=venue_map,aes(x =longitude, y = latitude),color="blue",alpha=1,size=1,shape=4)+
+              theme_void() + coord_quickmap() +
+              labs(title = "Event locations across Germany", 
+                   caption = "Source: ticketmaster.com") + 
+              theme(title = element_text(size=8, face='bold'),
+plot.caption = element_text(face = "italic"))
+```
+
+
+## 5.Repeat the data extraction and  visualisation for Iceland 
+```{r}
+#5.1 Extract all event venues in Iceland
+res <- GET("https://app.ticketmaster.com/discovery/v2/venues?", 
+    query = list(apikey = Ass5_key,
+                 countryCode="IS",
+                 locale="*"
+                  ))
+
+res_content<-fromJSON(content(res,as="text"))
+
+Iceland<-res_content[["_embedded"]][["venues"]]
+
+n_IS<-as.numeric(res_content$page$totalElements)
+
+```
+
+```{r}
+#5.2 Store Iceland's data in another dataframe
+IS_venue<- data.frame(
+                  name     = character(n_IS),
+                  city     = character(n_IS),
+                postalCode = character(n_IS),
+                 address   = character(n_IS),
+                       url = character(n_IS),
+                 longitude = character(n_IS),
+                   latitude= character(n_IS)
+                )
+IS_venue[,1]<-Iceland$name
+IS_venue[,2]<-Iceland$city$name
+IS_venue[,3]<-Iceland$postalCode
+IS_venue[,4]<-Iceland$address$line1
+IS_venue[,5]<-Iceland$url
+IS_venue[,6]<-Iceland$location$longitude
+IS_venue[,7]<-Iceland$location$latitude
+#5.3 print the transposed version of the incomplete venue data
+glimpse(IS_venue)
+
+```
+
+```{r}
+#5.3 Correct original data from API:
+
+IS_map<-IS_venue
+  
+IS_map$longitude =as.numeric(IS_map$longitude)
+IS_map$latitude =as.numeric(IS_map$latitude)
+
+# 5.3.1 Replace the missing value showing as 0 by NA 
+IS_map$longitude<-ifelse((IS_map$longitude)==0,
+       NA,
+       IS_map$longitude
+          )
+IS_map$latitude<-ifelse((IS_map$latitude)==0,
+       NA,
+       IS_map$latitude
+          )
+
+IS_map$longitude<-ifelse((IS_map$longitude)>0, #The longitude of Reykjavik should be negative
+       0-abs(IS_map$longitude),
+       IS_map$longitude
+          )
+
+
+
+```
+
+
+```{r,warning=FALSE}
+#5.4 Plot the venue data of Iceland
+ggplot() + 
+geom_polygon(
+              aes(x = long, y = lat, group = group), 
+              data = map_data("world", region = "Iceland"),
+              fill = "white",color = "black")+
+  geom_point(data=IS_map,aes(x =longitude, y = latitude),color="red",size=5,shape=4)+
+              theme_void() + coord_quickmap() +
+              labs(title = "Event locations across Iceland", 
+                   caption = "Source: ticketmaster.com") + 
+              theme(title = element_text(size=8, face='bold'),
+plot.caption = element_text(face = "italic"))
+```
+
+
