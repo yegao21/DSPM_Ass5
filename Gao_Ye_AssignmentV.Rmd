@@ -1,6 +1,6 @@
 ---
 title: "Ye_Gao_AssignmentV"
-author: "Ye Gao (work with Dantong Qu 5400692)"
+author: "Ye Gao 5405879 (work with Dantong Qu 5400692)"
 date: "2/12/2021"
 output: html_document
 ---
